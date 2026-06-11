@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>World Cup 2026 Bingo Simulator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .card-input-section {
+            margin-bottom: 30px;
+        }
+
+        .team-input-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        select, input[type="number"], button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .parameters {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .parameters h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .param-group label {
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .run-button {
+            width: 100%;
+            padding: 15px;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+
+        .results {
+            margin-top: 30px;
+        }
+
+        .card-result {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-result h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .probability-bars {
+            margin-bottom: 20px;
+        }
+
+        .prob-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stage-label {
+            width: 80px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .prob-value {
+            width: 60px;
+            text-align: right;
+            margin-right: 10px;
+            color: #333;
+        }
+
+        .bar-container {
+            flex: 1;
+            height: 25px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .teams-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #666;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            border-bottom: 3px solid transparent;
+            font-weight: 500;
+            color: #666;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            background: #f5f5f5;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .team-survival-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        .team-survival-table th,
+        .team-survival-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .team-survival-table th {
+            background: #f5f5f5;
+            font-weight: 600;
+            color: #333;
+            position: sticky;
+            top: 0;
+        }
+
+        .team-survival-table td {
+            color: #666;
+        }
+
+        .team-survival-table tr:hover {
+            background: #f9f9f9;
+        }
+
+        .prob-cell {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>⚽ World Cup 2026 Bingo Simulator</h1>
+        <p class="subtitle">Enter 18 teams and see when your bingo card completes!</p>
+
+        <div class="card-input-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3>Select Your 18 Teams</h3>
+                <button onclick="randomizeTeams()" style="padding: 10px 20px;">🎲 Randomize Teams</button>
+            </div>
+            <div class="team-input-grid" id="teamInputs"></div>
+            <div class="teams-preview" id="teamsPreview">Select teams to begin...</div>
+        </div>
+
+        <div class="parameters">
+            <div class="param-group" style="margin-bottom: 20px;">
+                <label for="numSims">Number of MC Simulations</label>
+                <input type="number" id="numSims" value="10000" min="100" max="100000" step="100">
+            </div>
+
+            <h3>Simulation Parameters</h3>
+            <p style="color: #777; font-size: 13px; margin-bottom: 15px;">Higher values are more deterministic</p>
+            <div class="param-grid">
+                <div class="param-group">
+                    <label for="alpha">Alpha (group stage upset factor)</label>
+                    <input type="number" id="alpha" value="0.35" min="0" max="2" step="0.05">
+                </div>
+                <div class="param-group">
+                    <label for="k">K (knockout stage upset factor)</label>
+                    <input type="number" id="k" value="0.5" min="0" max="3" step="0.1">
+                </div>
+            </div>
+        </div>
+
+        <button class="run-button" id="runButton" onclick="runSimulation()">Run Simulation</button>
+
+        <div class="results" id="results"></div>
+    </div>
+
+    <script>
+        let allTeams = [];
+
+        // Load teams on page load
+        async function loadTeams() {
+            try {
+                const response = await fetch('/api/teams');
+                const data = await response.json();
+                allTeams = data.teams;
+                createTeamInputs();
+            } catch (error) {
+                console.error('Error loading teams:', error);
+                document.getElementById('results').innerHTML =
+                    '<div class="error">Error loading teams. Please refresh the page.</div>';
+            }
+        }
+
+        // Create 18 dropdown selectors
+        function createTeamInputs() {
+            const container = document.getElementById('teamInputs');
+            container.innerHTML = '';
+
+            for (let i = 0; i < 18; i++) {
+                const select = document.createElement('select');
+                select.id = `team${i}`;
+                select.onchange = updatePreview;
+
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = '';
+                defaultOption.textContent = `Team ${i + 1}...`;
+                select.appendChild(defaultOption);
+
+                // Add all teams
+                allTeams.forEach(team => {
+                    const option = document.createElement('option');
+                    option.value = team;
+                    option.textContent = team;
+                    select.appendChild(option);
+                });
+
+                container.appendChild(select);
+            }
+        }
+
+        // Update preview of selected teams
+        function updatePreview() {
+            const teams = [];
+            for (let i = 0; i < 18; i++) {
+                const value = document.getElementById(`team${i}`).value;
+                if (value) teams.push(value);
+            }
+
+            const preview = document.getElementById('teamsPreview');
+            if (teams.length === 0) {
+                preview.textContent = 'Select teams to begin...';
+            } else if (teams.length < 18) {
+                preview.textContent = `${teams.length}/18 teams selected: ${teams.join(', ')}`;
+            } else {
+                preview.textContent = `✓ All 18 teams selected: ${teams.join(', ')}`;
+            }
+        }
+
+        // Randomize team selection
+        function randomizeTeams() {
+            if (allTeams.length < 18) {
+                alert('Not enough teams loaded to randomize.');
+                return;
+            }
+
+            // Shuffle and select first 18 teams
+            const shuffled = [...allTeams].sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, 18);
+
+            // Set the dropdowns
+            for (let i = 0; i < 18; i++) {
+                document.getElementById(`team${i}`).value = selected[i];
+            }
+
+            updatePreview();
+        }
+
+        // Run the simulation
+        async function runSimulation() {
+            // Collect selected teams
+            const teams = [];
+            for (let i = 0; i < 18; i++) {
+                const value = document.getElementById(`team${i}`).value;
+                if (!value) {
+                    alert(`Please select all 18 teams. Currently missing team ${i + 1}.`);
+                    return;
+                }
+                teams.push(value);
+            }
+
+            // Check for duplicates
+            const uniqueTeams = new Set(teams);
+            if (uniqueTeams.size !== 18) {
+                alert('Please select 18 different teams (no duplicates).');
+                return;
+            }
+
+            // Get parameters
+            const numSims = parseInt(document.getElementById('numSims').value);
+            const alpha = parseFloat(document.getElementById('alpha').value);
+            const k = parseFloat(document.getElementById('k').value);
+
+            // Show loading
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Running ${numSims.toLocaleString()} simulations...</p>
+                    <p>This may take a minute...</p>
+                </div>
+            `;
+
+            // Disable button
+            const button = document.getElementById('runButton');
+            button.disabled = true;
+            button.textContent = 'Running...';
+
+            try {
+                const response = await fetch('/api/simulate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cards: [teams],
+                        num_simulations: numSims,
+                        alpha: alpha,
+                        k: k
+                    })
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Simulation failed');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Run Simulation';
+            }
+        }
+
+        // Display simulation results
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('results');
+
+            const result = data.results[0];
+            const dist = result.completion_distribution;
+            const teamSurvival = result.team_survival_probabilities || {};
+
+            let html = `
+                <div class="card-result">
+                    <h3>Simulation Results</h3>
+                    <p>Based on ${data.num_simulations.toLocaleString()} simulations</p>
+                    <p>Parameters: α=${data.parameters.alpha}, k=${data.parameters.k}</p>
+
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('completion')">Card Completion</button>
+                        <button class="tab" onclick="switchTab('teams')">Team Survival</button>
+                    </div>
+
+                    <div id="completion-tab" class="tab-content active">
+                        <h4 style="margin-bottom: 15px;">When Does the Card Complete?</h4>
+                        <div class="probability-bars">
+            `;
+
+            const allStages = ['Group', 'R32', 'R16', 'QF', 'SF', 'Final', 'Never'];
+            allStages.forEach(stage => {
+                const prob = (dist[stage] || 0) * 100;
+                html += `
+                    <div class="prob-row">
+                        <div class="stage-label">${stage}</div>
+                        <div class="prob-value">${prob.toFixed(1)}%</div>
+                        <div class="bar-container">
+                            <div class="bar-fill" style="width: ${prob}%"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                        </div>
+                    </div>
+
+                    <div id="teams-tab" class="tab-content">
+                        <h4 style="margin-bottom: 15px;">Probability Each Team Survives Past Each Round</h4>
+                        <table class="team-survival-table">
+                            <thead>
+                                <tr>
+                                    <th>Team</th>
+                                    <th class="prob-cell">Group</th>
+                                    <th class="prob-cell">R32</th>
+                                    <th class="prob-cell">R16</th>
+                                    <th class="prob-cell">QF</th>
+                                    <th class="prob-cell">SF</th>
+                                    <th class="prob-cell">Final</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            `;
+
+            const stages = ['Group', 'R32', 'R16', 'QF', 'SF', 'Final'];
+            result.teams.forEach(team => {
+                html += `<tr><td>${team}</td>`;
+                if (teamSurvival[team]) {
+                    stages.forEach(stage => {
+                        const prob = (teamSurvival[team][stage] || 0) * 100;
+                        html += `<td class="prob-cell">${prob.toFixed(1)}%</td>`;
+                    });
+                } else {
+                    stages.forEach(() => {
+                        html += `<td class="prob-cell">-</td>`;
+                    });
+                }
+                html += `</tr>`;
+            });
+
+            html += `
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            resultsDiv.innerHTML = html;
+        }
+
+        // Switch between tabs
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+
+            // Show selected tab content
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+
+            // Add active class to clicked tab
+            event.target.classList.add('active');
+        }
+
+        // Load teams on page load
+        loadTeams();
+    </script>
+</body>
+</html>

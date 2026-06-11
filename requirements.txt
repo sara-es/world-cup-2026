@@ -1,0 +1,15 @@
+# Core dependencies
+numpy>=1.24.0
+
+# Web application
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# Optional: for better performance
+numba>=0.58.0  # Optional: JIT compilation for speedup
+
+# Development
+pytest>=7.4.0
+black>=23.0.0
