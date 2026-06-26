@@ -14,10 +14,6 @@ class MatchResult:
     team2: str
     team1_goals: int
     team2_goals: int
-    team1_yellows: int
-    team2_yellows: int
-    team1_reds: int
-    team2_reds: int
     extra_time: bool
     penalties: bool
     winner: Optional[str]
@@ -58,17 +54,8 @@ class MatchResult:
             raise ValueError(f"Team {team} not in this match")
 
     def get_disciplinary_points(self, team: str) -> int:
-        """
-        Get disciplinary points (negative = worse).
-        FIFA rules: Yellow = -1, Indirect red (2 yellows) = -3, Direct red = -4
-        For simplicity: we'll use -1 per yellow, -4 per red.
-        """
-        if team == self.team1:
-            return -(self.team1_yellows + 4 * self.team1_reds)
-        elif team == self.team2:
-            return -(self.team2_yellows + 4 * self.team2_reds)
-        else:
-            raise ValueError(f"Team {team} not in this match")
+        """Placeholder — real disciplinary data not tracked per match."""
+        return 0
 
 
 class CompletedMatches:
@@ -113,6 +100,13 @@ class CompletedMatches:
             teams.add(match.team1)
             teams.add(match.team2)
         return teams
+
+    def get_group_match_results(self, group: str) -> dict:
+        """Return match results as {(team1, team2): (goals1, goals2)} for tiebreaking."""
+        results = {}
+        for match in self.get_group_matches(group):
+            results[(match.team1, match.team2)] = (match.team1_goals, match.team2_goals)
+        return results
 
     def has_group_completed(self, group: str) -> bool:
         """Check if all group stage matches are complete (6 matches for 4 teams)."""
@@ -170,12 +164,20 @@ class CompletedMatches:
         """Get all teams that have been eliminated so far."""
         eliminated = set()
 
-        # Teams eliminated in group stage (4th place in completed groups)
+        # Teams eliminated in group stage: 4th place in each completed group
         for group in self._by_group:
             if self.has_group_completed(group):
-                # Would need to rank teams and identify 4th place
-                # This is simplified - proper implementation would rank by FIFA rules
-                pass
+                teams = list(self.get_teams_with_matches(group))
+                standings = self.get_group_standings(group, teams)
+                ranked = sorted(
+                    teams,
+                    key=lambda t: (
+                        -standings[t]['points'],
+                        -(standings[t]['goals_for'] - standings[t]['goals_against']),
+                        -standings[t]['goals_for'],
+                    )
+                )
+                eliminated.add(ranked[-1])  # 4th place is out
 
         # Teams eliminated in knockout stages
         for stage in ['R32', 'R16', 'QF', 'SF', 'Final']:
@@ -185,6 +187,26 @@ class CompletedMatches:
                     eliminated.add(loser)
 
         return eliminated
+
+
+_STAGE_NORMALISE = {
+    'Group Stage': 'Group',
+}
+
+_TEAM_NORMALISE = {
+    'Türkiye': 'Turkey',
+    "Cote d'Ivoire": 'Ivory Coast',
+    "Côte d'Ivoire": 'Ivory Coast',
+    "Cape Verde": 'Cabo Verde',
+}
+
+
+def _norm_stage(stage: str) -> str:
+    return _STAGE_NORMALISE.get(stage, stage)
+
+
+def _norm_team(team: str) -> str:
+    return _TEAM_NORMALISE.get(team, team)
 
 
 def load_completed_matches(filepath: str = 'data/completed_matches.csv') -> CompletedMatches:
@@ -203,21 +225,21 @@ def load_completed_matches(filepath: str = 'data/completed_matches.csv') -> Comp
         with open(filepath, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
+                team1 = _norm_team(row['team1'])
+                team2 = _norm_team(row['team2'])
+                winner_raw = row['winner']
+                winner = _norm_team(winner_raw) if winner_raw else None
                 match = MatchResult(
                     date=row['date'],
-                    stage=row['stage'],
+                    stage=_norm_stage(row['stage']),
                     group=row['group'] if row['group'] else None,
-                    team1=row['team1'],
-                    team2=row['team2'],
+                    team1=team1,
+                    team2=team2,
                     team1_goals=int(row['team1_goals']),
                     team2_goals=int(row['team2_goals']),
-                    team1_yellows=int(row['team1_yellows']),
-                    team2_yellows=int(row['team2_yellows']),
-                    team1_reds=int(row['team1_reds']),
-                    team2_reds=int(row['team2_reds']),
-                    extra_time=row['extra_time'].lower() == 'true',
-                    penalties=row['penalties'].lower() == 'true',
-                    winner=row['winner'] if row['winner'] else None
+                    extra_time=str(row['extra_time']).lower() == 'true',
+                    penalties=str(row['penalties']).lower() == 'true',
+                    winner=winner
                 )
                 matches.append(match)
     except FileNotFoundError:
@@ -264,3 +286,22 @@ def get_remaining_group_matches(
     ]
 
     return remaining
+
+
+def load_fair_play(filepath: str = 'data/fair_play.csv') -> Dict[str, int]:
+    """
+    Load per-team fair play ratings from CSV.
+
+    Returns:
+        Dict mapping team name to fair play rating (negative = more cards)
+    """
+    ratings: Dict[str, int] = {}
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                team = _norm_team(row['team'])
+                ratings[team] = int(row['fair_play_rating'])
+    except FileNotFoundError:
+        pass
+    return ratings

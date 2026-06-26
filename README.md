@@ -1,6 +1,6 @@
 # World Cup 2026 Bingo Monte Carlo Simulator
 
-A vibe coded Monte Carlo simulation system for analyzing World Cup 2026 knockout bingo cards. Simulates tournament outcomes to calculate the probability of all teams being knocked out (and bingo card completion) at each stage.
+A vibe coded Monte Carlo simulation system for analyzing World Cup 2026 [knockout bingo cards](https://stain.github.io/worldcupbingo/). Simulates tournament outcomes to calculate the probability of all teams being knocked out (and bingo card completion) at each stage. Built with Claude (see prompts at the end of this readme) in a couple hours, there's probably some weird code and/or logic floating around.
 
 ## Features
 
@@ -160,8 +160,8 @@ For each card:
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
 | `mu` | ln(1.3) | - | Poisson base rate (avg goals per team) |
-| `alpha` | 0.35 | 0.0 - 2.0 | Poisson strength effect (higher = more deterministic) |
-| `k` | 0.5 | 0.0 - 3.0 | Bradley-Terry exponent (higher = more deterministic) |
+| `alpha` | 0.35 | 0.0 - 15.0 | Poisson strength effect (higher = more deterministic) |
+| `k` | 0.5 | 0.0 - 15.0 | Bradley-Terry exponent (higher = more deterministic) |
 | `num_sims` | 10,000 | 100 - 100,000 | Number of Monte Carlo simulations |
 ## Technical Details
 
@@ -201,7 +201,7 @@ This project is for educational and entertainment purposes.
 - FIFA World Cup 2026 regulations (Annex C)
 
 ## Claude Code prompts
-
+```
 Someone at work has made a bingo raffle for the world cup. It has 18 teams on it, and the person whose teams are all eliminated first is the winner. If I wanted to calculate the odds of a certain card still being "active" at the end of each stage. I want to eventually make this a web app. First I want to write an MC sim that does:
 for each simulation:
     simulate group stage -> determine who advances
@@ -237,3 +237,4 @@ All files are in data/
 3. Input should be a list of 18 teams by country name. I want a user to be able to input the country names on a web app and then get the output odds. There should also be a randomize button.
 4. I should be able to tune the number of MC simulations in the web app, start with 10k as default
 5. use python for the sim, fastapi for the webapp, the web app should be separate files to the sim logic
+```

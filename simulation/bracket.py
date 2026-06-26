@@ -59,14 +59,14 @@ class R32Bracket:
             code = f'3{group}'
             third_place_map[code] = team
 
-        # R32 match slots to bracket positions (from FIFA regulations)
+        # R32 match slots to bracket positions (from FIFA regulations Article 12.6)
         SLOT_TO_R32_MATCH = {
             '1A': 7,   # Winner A vs 3rd place (Annex C) → R32 match 7
             '1B': 13,  # Winner B vs 3rd place (Annex C) → R32 match 13
             '1D': 9,   # Winner D vs 3rd place (Annex C) → R32 match 9
-            '1E': 3,   # Winner E vs 3rd place (Annex C) → R32 match 3
+            '1E': 2,   # Winner E vs 3rd place (Annex C) → R32 match 2
             '1G': 10,  # Winner G vs 3rd place (Annex C) → R32 match 10
-            '1I': 4,   # Winner I vs 3rd place (Annex C) → R32 match 4
+            '1I': 5,   # Winner I vs 3rd place (Annex C) → R32 match 5
             '1K': 15,  # Winner K vs 3rd place (Annex C) → R32 match 15
             '1L': 8,   # Winner L vs 3rd place (Annex C) → R32 match 8
         }
@@ -86,8 +86,8 @@ class R32Bracket:
             matchups[match_num - 1] = (winner_team, third_team)  # Convert to 0-indexed
 
         # Fill in the 4 Winner vs Runner-up matches (fixed per FIFA regulations)
-        matchups[2 - 1] = (self.winners['F'], self.runners_up['C'])   # R32-2: 1F vs 2C
-        matchups[5 - 1] = (self.winners['C'], self.runners_up['F'])   # R32-5: 1C vs 2F
+        matchups[3 - 1] = (self.winners['F'], self.runners_up['C'])   # R32-3: 1F vs 2C
+        matchups[4 - 1] = (self.winners['C'], self.runners_up['F'])   # R32-4: 1C vs 2F
         matchups[12 - 1] = (self.winners['H'], self.runners_up['J'])  # R32-12: 1H vs 2J
         matchups[14 - 1] = (self.winners['J'], self.runners_up['H'])  # R32-14: 1J vs 2H
 

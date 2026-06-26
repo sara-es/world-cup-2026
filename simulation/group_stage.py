@@ -2,6 +2,7 @@
 import math
 import numpy as np
 import random
+from functools import cmp_to_key
 from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 
@@ -20,6 +21,81 @@ class TeamRecord:
     @property
     def goal_diff(self) -> int:
         return self.goals_for - self.goals_against
+
+
+def _mini_league_stats(
+    tier: List['TeamRecord'],
+    match_results: Dict[Tuple[str, str], Tuple[int, int]]
+) -> Dict[str, Dict[str, int]]:
+    """Compute points/GD/GF among a subset of teams using only their head-to-head matches."""
+    tier_set = {t.team for t in tier}
+    stats = {t.team: {'pts': 0, 'gd': 0, 'gf': 0} for t in tier}
+    for (t1, t2), (g1, g2) in match_results.items():
+        if t1 in tier_set and t2 in tier_set:
+            stats[t1]['gf'] += g1
+            stats[t1]['gd'] += g1 - g2
+            stats[t2]['gf'] += g2
+            stats[t2]['gd'] += g2 - g1
+            if g1 > g2:
+                stats[t1]['pts'] += 3
+            elif g1 == g2:
+                stats[t1]['pts'] += 1
+                stats[t2]['pts'] += 1
+            else:
+                stats[t2]['pts'] += 3
+    return stats
+
+
+def rank_group(
+    records: Dict[str, 'TeamRecord'],
+    match_results: Dict[Tuple[str, str], Tuple[int, int]],
+    fair_play: Dict[str, int],
+    fifa_rankings: Dict[str, float]
+) -> List['TeamRecord']:
+    """
+    Rank teams using official FIFA 2026 World Cup tiebreaker rules:
+    1. Points
+    2. Mini-league (head-to-head): points, then GD, then GF among tied teams
+    3. Overall GD, overall GF
+    4. Fair play record (higher = better)
+    5. FIFA ranking (higher = better)
+    """
+    all_teams = list(records.values())
+    by_points = sorted(all_teams, key=lambda r: r.points, reverse=True)
+
+    result: List['TeamRecord'] = []
+    i = 0
+    while i < len(by_points):
+        j = i + 1
+        while j < len(by_points) and by_points[j].points == by_points[i].points:
+            j += 1
+        tier = by_points[i:j]
+
+        if len(tier) == 1:
+            result.extend(tier)
+        else:
+            mini = _mini_league_stats(tier, match_results)
+
+            def cmp(a: 'TeamRecord', b: 'TeamRecord') -> int:
+                for key in ('pts', 'gd', 'gf'):
+                    if mini[a.team][key] != mini[b.team][key]:
+                        return mini[b.team][key] - mini[a.team][key]
+                if a.goal_diff != b.goal_diff:
+                    return b.goal_diff - a.goal_diff
+                if a.goals_for != b.goals_for:
+                    return b.goals_for - a.goals_for
+                fp_a = fair_play.get(a.team, 0)
+                fp_b = fair_play.get(b.team, 0)
+                if fp_a != fp_b:
+                    return fp_b - fp_a
+                r_a = fifa_rankings.get(a.team, 0)
+                r_b = fifa_rankings.get(b.team, 0)
+                return int((r_b - r_a) * 1000)
+
+            result.extend(sorted(tier, key=cmp_to_key(cmp)))
+        i = j
+
+    return result
 
 
 def simulate_match(
@@ -82,8 +158,9 @@ def simulate_group(
     strengths: Dict[str, float],
     fifa_rankings: Dict[str, float],
     mu: float = math.log(1.3),
-    alpha: float = 0.35, 
-    rng: np.random.Generator = np.random.default_rng()
+    alpha: float = 0.35,
+    rng: np.random.Generator = np.random.default_rng(),
+    fair_play: Optional[Dict[str, int]] = None
 ) -> List[TeamRecord]:
     """
     Simulate all matches in a group and return final standings.
@@ -94,14 +171,14 @@ def simulate_group(
         fifa_rankings: Dict mapping team name to FIFA ranking (for tiebreaker)
         mu: Base rate parameter
         alpha: Strength effect parameter
+        fair_play: Optional fair play ratings per team (for tiebreaking)
 
     Returns:
         List of TeamRecords sorted by final standings (1st, 2nd, 3rd, 4th)
     """
-    # Initialize records
     records = {team: TeamRecord(team=team) for team in teams}
+    match_results: Dict[Tuple[str, str], Tuple[int, int]] = {}
 
-    # Play all matches (round-robin: 6 matches for 4 teams)
     for i in range(len(teams)):
         for j in range(i + 1, len(teams)):
             team1, team2 = teams[i], teams[j]
@@ -109,27 +186,11 @@ def simulate_group(
                 strengths[team1], strengths[team2],
                 mu, alpha, rng
             )
-
             update_record(records[team1], goals1, goals2)
             update_record(records[team2], goals2, goals1)
+            match_results[(team1, team2)] = (goals1, goals2)
 
-    # Sort by FIFA tiebreaker rules:
-    # 1. Points
-    # 2. Goal difference
-    # 3. Goals scored
-    # 4. FIFA ranking (higher rating = better)
-    standings = sorted(
-        records.values(),
-        key=lambda r: (
-            r.points,
-            r.goal_diff,
-            r.goals_for,
-            fifa_rankings.get(r.team, 0)  # Higher FIFA rating is better
-        ),
-        reverse=True
-    )
-
-    return standings
+    return rank_group(records, match_results, fair_play or {}, fifa_rankings)
 
 
 def simulate_group_with_results(
@@ -140,7 +201,9 @@ def simulate_group_with_results(
     remaining_matches: Optional[List[Tuple[str, str]]] = None,
     mu: float = math.log(1.3),
     alpha: float = 0.35,
-    rng: np.random.Generator = np.random.default_rng()
+    rng: np.random.Generator = np.random.default_rng(),
+    completed_match_results: Optional[Dict[Tuple[str, str], Tuple[int, int]]] = None,
+    fair_play: Optional[Dict[str, int]] = None
 ) -> List[TeamRecord]:
     """
     Simulate a group with some completed matches.
@@ -154,11 +217,12 @@ def simulate_group_with_results(
         mu: Base rate parameter
         alpha: Strength effect parameter
         rng: Random number generator
+        completed_match_results: Individual results from completed matches, used for head-to-head tiebreaking
+        fair_play: Optional fair play ratings per team
 
     Returns:
         List of TeamRecords sorted by final standings
     """
-    # Initialize records from completed standings or from scratch
     records = {}
     if completed_standings:
         for team in teams:
@@ -175,16 +239,15 @@ def simulate_group_with_results(
     else:
         records = {team: TeamRecord(team=team) for team in teams}
 
-    # Determine which matches to simulate
+    match_results: Dict[Tuple[str, str], Tuple[int, int]] = dict(completed_match_results or {})
+
     if remaining_matches is None:
-        # Simulate all matches
         matches_to_sim = [(teams[i], teams[j])
                           for i in range(len(teams))
                           for j in range(i + 1, len(teams))]
     else:
         matches_to_sim = remaining_matches
 
-    # Simulate remaining matches
     for team1, team2 in matches_to_sim:
         goals1, goals2 = simulate_match(
             strengths[team1], strengths[team2],
@@ -192,20 +255,9 @@ def simulate_group_with_results(
         )
         update_record(records[team1], goals1, goals2)
         update_record(records[team2], goals2, goals1)
+        match_results[(team1, team2)] = (goals1, goals2)
 
-    # Sort by FIFA tiebreaker rules
-    standings = sorted(
-        records.values(),
-        key=lambda r: (
-            r.points,
-            r.goal_diff,
-            r.goals_for,
-            fifa_rankings.get(r.team, 0)
-        ),
-        reverse=True
-    )
-
-    return standings
+    return rank_group(records, match_results, fair_play or {}, fifa_rankings)
 
 
 def simulate_all_groups(
@@ -215,7 +267,8 @@ def simulate_all_groups(
     mu: float = math.log(1.3),
     alpha: float = 0.35,
     rng: np.random.Generator = np.random.default_rng(),
-    completed_matches = None
+    completed_matches=None,
+    fair_play: Optional[Dict[str, int]] = None
 ) -> Dict[str, List[TeamRecord]]:
     """
     Simulate all group stage matches, using real results if available.
@@ -245,11 +298,13 @@ def simulate_all_groups(
             standings = simulate_group_with_results(
                 teams, strengths, fifa_rankings,
                 current_standings, remaining,
-                mu, alpha, rng
+                mu, alpha, rng,
+                completed_match_results=completed_matches.get_group_match_results(group_letter),
+                fair_play=fair_play
             )
         else:
             # Pure simulation
-            standings = simulate_group(teams, strengths, fifa_rankings, mu, alpha, rng)
+            standings = simulate_group(teams, strengths, fifa_rankings, mu, alpha, rng, fair_play=fair_play)
 
         all_standings[group_letter] = standings
 

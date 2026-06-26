@@ -1,5 +1,5 @@
 """Track bingo card completion through tournament stages."""
-from typing import List, Set, Dict, Optional
+from typing import List, Set, Dict, Optional, Any
 from collections import defaultdict
 
 
@@ -174,9 +174,20 @@ class BingoSimulationAggregator:
             defaultdict(lambda: defaultdict(int)) for _ in range(num_cards)
         ]
 
+        # completion_match_indices[card_idx] = list of match indices when card completed
+        self.completion_match_indices = [
+            [] for _ in range(num_cards)
+        ]
+
+        # card_active_counts[card_idx][stage] = count of times card was active after stage
+        self.card_active_counts = [
+            defaultdict(int) for _ in range(num_cards)
+        ]
+
     def add_simulation_result(
         self,
         completion_stages: List[str],
+        completion_match_idx: Optional[List[Optional[int]]] = None,
         eliminations: Optional[Dict[str, List[str]]] = None
     ) -> None:
         """
@@ -184,12 +195,29 @@ class BingoSimulationAggregator:
 
         Args:
             completion_stages: List of completion stages, one per card
+            completion_match_idx: List of match indices when each card completed (None if never)
             eliminations: Dict mapping stage to list of eliminated teams
         """
         self.num_simulations += 1
 
         for card_idx, stage in enumerate(completion_stages):
             self.completion_counts[card_idx][stage] += 1
+
+            # Record completion match index
+            if completion_match_idx and completion_match_idx[card_idx] is not None:
+                self.completion_match_indices[card_idx].append(completion_match_idx[card_idx])
+
+            # Track card active status (same logic as team survival)
+            # Card is active after stage S if it completes at a later stage
+            if stage == 'Never':
+                completion_index = len(BingoTracker.STAGES) - 1
+            else:
+                completion_index = BingoTracker.STAGES.index(stage)
+
+            # Card is active after a stage if it completes AFTER that stage
+            for stage_idx, stage_name in enumerate(BingoTracker.STAGES[:-1]):
+                if stage_idx < completion_index:
+                    self.card_active_counts[card_idx][stage_name] += 1
 
     def add_team_survival_data(
         self,
@@ -215,6 +243,8 @@ class BingoSimulationAggregator:
 
         # For each team, count survival past each stage
         for team in teams:
+            # Ensure team has an entry even if never incremented (e.g. eliminated at Group stage)
+            _ = self.team_survival_counts[card_idx][team]
             elimination_stage = team_elimination_stage.get(team)
 
             if elimination_stage is None:
@@ -232,6 +262,7 @@ class BingoSimulationAggregator:
     def get_probabilities(self) -> List[Dict[str, float]]:
         """
         Calculate probability of each card being active after each stage.
+        Uses the same logic as team survival probabilities.
 
         Returns:
             List of dicts (one per card) mapping stage to P(active after stage)
@@ -241,19 +272,10 @@ class BingoSimulationAggregator:
         for card_idx in range(self.num_cards):
             card_probs = {}
 
-            # For each stage, calculate P(card active after this stage)
-            # = P(completion happens after this stage) / total_sims
+            # For each stage, get probability card was active after that stage
             for stage in BingoTracker.STAGES[:-1]:  # Exclude 'Never'
-                # Count simulations where card completed AFTER this stage
-                stage_index = BingoTracker.STAGES.index(stage)
-                later_stages = BingoTracker.STAGES[stage_index + 1:]
-
-                count_active = sum(
-                    self.completion_counts[card_idx][s]
-                    for s in later_stages
-                )
-
-                card_probs[stage] = count_active / self.num_simulations
+                count = self.card_active_counts[card_idx][stage]
+                card_probs[stage] = count / self.num_simulations
 
             probabilities.append(card_probs)
 
@@ -301,3 +323,110 @@ class BingoSimulationAggregator:
             probabilities.append(card_team_probs)
 
         return probabilities
+
+    def get_completion_time_stats(self) -> List[Dict[str, Any]]:
+        """
+        Get completion time statistics for each card.
+
+        Returns:
+            List of dicts with completion time stats per card:
+            - mean_completion_match: Average match index of completion
+            - finishes_first_pct: Percentage of times this card finished first
+            - completion_times: List of all completion match indices
+        """
+        stats = []
+
+        # For each simulation, find which card(s) finished first
+        finish_first_counts = [0] * self.num_cards
+
+        # Group completion match indices by simulation
+        for sim_idx in range(self.num_simulations):
+            # Get completion match index for each card in this simulation
+            sim_completions = []
+            for card_idx in range(self.num_cards):
+                if sim_idx < len(self.completion_match_indices[card_idx]):
+                    match_idx = self.completion_match_indices[card_idx][sim_idx]
+                    sim_completions.append((match_idx, card_idx))
+                else:
+                    # Card never completed in this simulation
+                    sim_completions.append((float('inf'), card_idx))
+
+            # Find minimum completion time (all tied cards share the prize)
+            if sim_completions:
+                min_match_idx = min(c[0] for c in sim_completions)
+                if min_match_idx != float('inf'):
+                    # Count all cards that finished at this time (ties share the prize)
+                    for match_idx, card_idx in sim_completions:
+                        if match_idx == min_match_idx:
+                            finish_first_counts[card_idx] += 1
+
+        # Compute stats for each card
+        for card_idx in range(self.num_cards):
+            completion_times = self.completion_match_indices[card_idx]
+
+            if completion_times:
+                mean_match = sum(completion_times) / len(completion_times)
+            else:
+                mean_match = float('inf')
+
+            stats.append({
+                'mean_completion_match': mean_match,
+                'finishes_first_count': finish_first_counts[card_idx],
+                'finishes_first_pct': finish_first_counts[card_idx] / self.num_simulations,
+                'num_completions': len(completion_times),
+                'completion_times': completion_times
+            })
+
+        return stats
+
+    def get_first_completion_distribution(self) -> Dict[str, float]:
+        """
+        Get distribution of when the FIRST card completes across all simulations.
+
+        Returns:
+            Dict mapping stage to probability that first completion happens in that stage
+        """
+        # Map match index to stage
+        def match_idx_to_stage(match_idx: int) -> str:
+            if match_idx <= 71:
+                return 'Group'
+            elif match_idx <= 87:
+                return 'R32'
+            elif match_idx <= 95:
+                return 'R16'
+            elif match_idx <= 99:
+                return 'QF'
+            elif match_idx <= 101:
+                return 'SF'
+            elif match_idx == 102:
+                return 'Final'
+            else:
+                return 'Never'
+
+        stage_counts = {stage: 0 for stage in BingoTracker.STAGES}
+
+        # For each simulation, find the minimum completion time
+        for sim_idx in range(self.num_simulations):
+            min_match_idx = float('inf')
+
+            # Find minimum across all cards in this simulation
+            for card_idx in range(self.num_cards):
+                if sim_idx < len(self.completion_match_indices[card_idx]):
+                    match_idx = self.completion_match_indices[card_idx][sim_idx]
+                    if match_idx < min_match_idx:
+                        min_match_idx = match_idx
+
+            # Map to stage and count
+            if min_match_idx == float('inf'):
+                stage_counts['Never'] += 1
+            else:
+                stage = match_idx_to_stage(min_match_idx)
+                stage_counts[stage] += 1
+
+        # Convert to probabilities
+        distribution = {
+            stage: count / self.num_simulations
+            for stage, count in stage_counts.items()
+        }
+
+        return distribution

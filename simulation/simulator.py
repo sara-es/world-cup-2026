@@ -9,7 +9,7 @@ from simulation.third_place import get_third_place_qualifiers
 from simulation.bracket import build_r32_bracket
 from simulation.knockout import KnockoutStage
 from simulation.bingo_tracker import BingoTracker, BingoSimulationAggregator
-from simulation.match_loader import load_completed_matches, CompletedMatches
+from simulation.match_loader import load_completed_matches, CompletedMatches, load_fair_play
 
 
 class WorldCupSimulator:
@@ -25,6 +25,7 @@ class WorldCupSimulator:
         fifa_path: str = 'data/fifa_ratings.csv',
         groups_path: str = 'data/bracket.csv',
         matches_path: str = 'data/completed_matches.csv',
+        fair_play_path: str = 'data/fair_play.csv',
         mu: float = math.log(1.3),
         alpha: float = 0.35,
         k: float = 0.5,
@@ -58,8 +59,9 @@ class WorldCupSimulator:
             self.all_teams
         )
 
-        # Load completed matches
+        # Load completed matches and fair play data
         self.completed_matches = load_completed_matches(matches_path)
+        self.fair_play = load_fair_play(fair_play_path)
 
         # Simulation parameters
         self.mu = mu
@@ -67,13 +69,23 @@ class WorldCupSimulator:
         self.k = k
         self.rng = rng if rng is not None else np.random.default_rng()
 
-    def simulate_single_tournament(self) -> Dict[str, List[str]]:
+    def simulate_single_tournament(self) -> tuple[Dict[str, List[str]], Dict[str, int]]:
         """
         Simulate one complete tournament.
 
         Returns:
-            Dict mapping stage name to list of teams eliminated in that stage
+            Tuple of:
+            - Dict mapping stage name to list of teams eliminated in that stage
+            - Dict mapping team name to match_index when eliminated
         """
+        # Match indices:
+        # Group stage: 72 matches (0-71), eliminations happen at match 71
+        # R32: 16 matches (72-87)
+        # R16: 8 matches (88-95)
+        # QF: 4 matches (96-99)
+        # SF: 2 matches (100-101)
+        # Final: 1 match (102)
+
         # 1. Simulate group stage (using real results where available)
         group_standings = simulate_all_groups(
             self.groups,
@@ -82,7 +94,8 @@ class WorldCupSimulator:
             self.mu,
             self.alpha,
             self.rng,
-            self.completed_matches
+            self.completed_matches,
+            fair_play=self.fair_play
         )
 
         group_result = GroupStageResult(group_standings)
@@ -93,6 +106,13 @@ class WorldCupSimulator:
         # 2. Select best 8 third-place teams
         qualifying_groups, qualifying_teams, third_eliminated = \
             get_third_place_qualifiers(group_standings, self.fifa_ratings)
+
+        # Track elimination match indices
+        team_elimination_match = {}
+
+        # Group stage eliminations happen after all group matches (match 71)
+        for team in group_eliminated + third_eliminated:
+            team_elimination_match[team] = 71
 
         # 3. Build R32 bracket
         r32_bracket = build_r32_bracket(
@@ -111,6 +131,21 @@ class WorldCupSimulator:
 
         knockout_eliminated = knockout.get_eliminated_by_stage()
 
+        # Assign match indices for knockout eliminations
+        match_idx = 72  # Start of R32
+        for stage in ['R32', 'R16', 'QF', 'SF', 'Final']:
+            num_matches = {'R32': 16, 'R16': 8, 'QF': 4, 'SF': 2, 'Final': 1}[stage]
+            # Eliminated teams are spread across matches in this stage
+            teams_in_stage = knockout_eliminated[stage]
+            teams_per_match = 2 if stage != 'Final' else 1  # Final only eliminates 1 team
+
+            for i, team in enumerate(teams_in_stage):
+                # Distribute teams across matches in this stage
+                team_match_offset = i // teams_per_match
+                team_elimination_match[team] = match_idx + team_match_offset
+
+            match_idx += num_matches
+
         # Combine all eliminations by stage
         eliminations = {
             'Group': group_eliminated + third_eliminated,
@@ -121,7 +156,7 @@ class WorldCupSimulator:
             'Final': knockout_eliminated['Final']
         }
 
-        return eliminations
+        return eliminations, team_elimination_match
 
     def simulate_bingo_cards(
         self,
@@ -147,7 +182,7 @@ class WorldCupSimulator:
                 print(f"Simulation {sim_num + 1}/{num_simulations}")
 
             # Run one tournament simulation
-            eliminations = self.simulate_single_tournament()
+            eliminations, team_elimination_match = self.simulate_single_tournament()
 
             # Track bingo cards through this simulation
             tracker = BingoTracker(cards)
@@ -166,8 +201,24 @@ class WorldCupSimulator:
                 for i in range(len(cards))
             ]
 
+            # Compute completion match index for each card
+            # (max elimination match index among the card's 18 teams)
+            completion_match_indices = []
+            for card_teams in cards:
+                card_team_matches = []
+                for team in card_teams:
+                    if team in team_elimination_match:
+                        card_team_matches.append(team_elimination_match[team])
+
+                if card_team_matches:
+                    # Card completes when last team is eliminated
+                    completion_match_indices.append(max(card_team_matches))
+                else:
+                    # Card never completes (shouldn't happen)
+                    completion_match_indices.append(None)
+
             # Add to aggregator
-            aggregator.add_simulation_result(completion_stages)
+            aggregator.add_simulation_result(completion_stages, completion_match_indices)
 
             # Track team survival for each card
             for card_idx, card_teams in enumerate(cards):

@@ -8,3 +8,6 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Repo-specific
+data/CS World Cup Bingo 2026.xlsx
